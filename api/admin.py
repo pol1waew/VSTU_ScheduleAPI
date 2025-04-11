@@ -1,18 +1,22 @@
-from django.contrib import admin
+from api.utilities import WriteAPI, ReadAPI
+
+from django.contrib import admin, messages
 from django.forms import BaseInlineFormSet
 from django.utils import timezone
 
 from api.models import (
     AbstractEvent,
     AbstractDay,
-    AbstractSchedule,
+    ScheduleTemplateMetadata,
+    ScheduleMetadata,
+    ScheduleTemplate,
+    Schedule,
     Department,
     Organization,
     Event,
     EventKind,
     EventParticipant,
     EventPlace,
-    Schedule,
     Subject,
     TimeSlot,
     DayDateOverride,
@@ -57,25 +61,114 @@ class EventKindAdmin(BaseAdmin):
     search_fields = ("name",)
 
 
+@admin.register(ScheduleTemplateMetadata)
+class ScheduleTemplateMetadataAdmin(BaseAdmin):
+    list_display = ("faculty", "scope")
+    search_fields = ("faculty", "scope")
+    list_filter = ("faculty", "scope")
+
+
+@admin.register(ScheduleMetadata)
+class ScheduleMetadataAdmin(BaseAdmin):
+    list_display = ("years", "course", "semester")
+    search_fields = ("years", "course", "semester")
+    list_filter = ("years", "course", "semester")
+
+
+@admin.register(ScheduleTemplate)
+class ScheduleTemplateAdmin(BaseAdmin):
+    list_display = ("repetition_period", "department_name", "aligned_by_week_day")
+    search_fields = ("repetition_period", "department__name", "aligned_by_week_day")
+    list_filter = ("metadata__faculty", "metadata__scope")
+
+    @admin.display(description=ScheduleTemplate._meta.get_field("department").verbose_name, 
+                   ordering="department__name")
+    def department_name(self, obj):
+        return obj.department.name
+
+
 @admin.register(Schedule)
 class ScheduleAdmin(BaseAdmin):
     list_display = ("faculty", "course", "semester", "years")
-    search_fields = ("faculty", "scope")
-    list_filter = ("faculty", "course", "semester", "years")
+    search_fields = ("schedule_template__metadata__faculty", "schedule_template__metadata__scope")
+    list_filter = ("schedule_template__metadata__faculty", "schedule_template__metadata__scope", "metadata__course", "metadata__semester", "metadata__years")
+
+    @admin.display(description=Schedule._meta.get_field("schedule_template").verbose_name, 
+                   ordering="schedule_template__metadata__faculty")
+    def faculty(self, obj):
+        return obj.schedule_template.metadata.faculty
+
+    @admin.display(description=ScheduleMetadata._meta.get_field("course").verbose_name, 
+                   ordering="metadata__course")
+    def course(self, obj):
+        return obj.metadata.course
+
+    @admin.display(description=ScheduleMetadata._meta.get_field("semester").verbose_name, 
+                   ordering="metadata__semester")
+    def semester(self, obj):
+        return obj.metadata.semester
+
+    @admin.display(description=ScheduleMetadata._meta.get_field("years").verbose_name, 
+                   ordering="metadata__years")
+    def years(self, obj):
+        return obj.metadata.years
 
 
 @admin.register(Event)
 class EventAdmin(BaseAdmin):
-    list_display = ("abstract_event__subject", "abstract_event__kind")
-    search_fields = ("abstract_event__subject__name", "abstract_event__kind__name")
-    list_filter = ("abstract_event__kind__name",)
+    list_display = ("subject_override", "kind_override", "date", "time_slot_override")
+    search_fields = ("subject_override", "date", "kind_override")
+    list_filter = ("kind_override",)
+
+    actions = ["test"]
+    @admin.action(description="Testing ReadAPI")
+    def test(modeladmin, request, queryset):
+        from datetime import timedelta, date
+        # по дате: сегодня, завтра, на эту неделю, на след неделю
+        # по группам, по преподавателям, по аудиториям
+        # всё, конкретное указание 
+
+        # по дате
+        today = date.fromisoformat('2025-02-14')
+        tomorrow = today + timedelta(days=1)
+
+        '''
+        'date' : today
+        '''
+
+        this_week_start = today - timedelta(today.weekday())
+        this_week_end = this_week_start + timedelta(days=6)
+
+        next_week_start = today + timedelta(days=7) - timedelta(today.weekday())
+        next_week_end = next_week_start + timedelta(days=6)
+
+
+
+
+        read = ReadAPI()
+
+        ## вынести в отдельые классы
+        read.append_filter({
+            'date__range' : [next_week_start, next_week_end]
+        })
+
+        read.get_data()
 
 
 @admin.register(AbstractEvent)
 class AbstractEventAdmin(BaseAdmin):
-    list_display = ("subject", "kind")
+    list_display = ("subject", "kind", "time_slot")
     search_fields = ("subject__name", "kind__name")
     list_filter = ("kind__name",)
+
+    actions = ["fill"]
+
+    @admin.action(description="Заполнить семестр")
+    def fill(modeladmin, request, queryset):
+        if WriteAPI.fill_event_table(queryset):
+            messages.success(request, "Успешно заполнено")
+        else:
+            messages.error(request, "Произошла ошибка")
 
 
 @admin.register(AbstractDay)
@@ -83,18 +176,16 @@ class AbstractDayAdmin(BaseAdmin):
     list_display = ("name", "day_number")
     search_fields = ("name", "day_number")
 
-
-@admin.register(AbstractSchedule)
-class AbstractScheduleAdmin(BaseAdmin):
-    list_display = ("repetition_period", "department__name", "aligned_by_week_day")
-    search_fields = ("repetition_period", "department__name", "aligned_by_week_day")
-
-
 @admin.register(Department)
 class DepartmentAdmin(BaseAdmin):
-    list_display = ("name", "organization__name")
+    list_display = ("name", "organization_name")
     search_fields = ("name", "organization__name")
     list_filter = ("name", "organization__name")
+
+    @admin.display(description=Department._meta.get_field("organization").verbose_name, 
+                   ordering="organization__name")
+    def organization_name(self, obj):
+        return obj.organization.name
 
 
 @admin.register(Organization)
