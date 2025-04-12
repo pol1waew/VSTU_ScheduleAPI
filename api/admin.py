@@ -123,34 +123,14 @@ class EventAdmin(BaseAdmin):
     actions = ["test"]
     @admin.action(description="Testing ReadAPI")
     def test(modeladmin, request, queryset):
-        from datetime import timedelta, date
+        import api.utilityFilters as filters
         # по дате: сегодня, завтра, на эту неделю, на след неделю
         # по группам, по преподавателям, по аудиториям
         # всё, конкретное указание 
 
-        # по дате
-        today = date.fromisoformat('2025-02-14')
-        tomorrow = today + timedelta(days=1)
-
-        '''
-        'date' : today
-        '''
-
-        this_week_start = today - timedelta(today.weekday())
-        this_week_end = this_week_start + timedelta(days=6)
-
-        next_week_start = today + timedelta(days=7) - timedelta(today.weekday())
-        next_week_end = next_week_start + timedelta(days=6)
-
-
-
-
         read = ReadAPI()
 
-        ## вынести в отдельые классы
-        read.append_filter({
-            'date__range' : [next_week_start, next_week_end]
-        })
+        read.append_filter(filters.DateFilter.this_week())
 
         read.get_data()
 

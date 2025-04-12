@@ -3,8 +3,10 @@ from datetime import timedelta
 
 from api.models import (Event,)
 
+import api.utilityFilters as filters
 
-class Utilities():
+
+class Utilities:
     def __init__(self):
         pass
 
@@ -12,21 +14,29 @@ class Utilities():
     pass
 
 
-class Filter():
-
-
 ## возвращать как объекты готовые для json
-class ReadAPI():
+class ReadAPI:
     filter_query : dict
 
 
     def __init__(self, filter_query : dict = None):
-        self.filter_query = filter_query if filter_query is not None else {}
-        # self.filter_query = filter_query or {}
+        self.filter_query = filter_query or {}
 
     
-    def append_filter(self, addition_query):
+    def append_filter(self, addition_query : dict):
+        """Updates filter query from dictionary
+
+        Allows user manualy append filters in format {'field_name' : value}
+        """
+
         self.filter_query.update(addition_query)
+
+
+    def append_filter(self, filter : filters.UtilityFilterBase):
+        """Updates filter query from utility filter
+        """
+
+        self.filter_query.update(filter)
 
 
     def get_data(self):
@@ -43,7 +53,7 @@ class ReadAPI():
     ## get расписание преподавателей для ПОАС
 
 
-class WriteAPI():
+class WriteAPI:
     @staticmethod
     def create_event(date, abstract_event):
         """create new Event from given AbstractEvent and date when Event happens"""
