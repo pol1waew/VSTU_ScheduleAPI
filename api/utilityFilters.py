@@ -1,8 +1,11 @@
+from django.db.models import F
 from datetime import date, timedelta
 
 
 class UtilityFilterBase:
     """Base parent class for filters   
+
+    Utility filters returns filter query: dict {key : value}
     """
 
 
@@ -54,3 +57,45 @@ class DateFilter(UtilityFilterBase):
         return DateFilter.take_whole_week(date.today() + timedelta(weeks=1))
     
 
+class ParticipantFilter(UtilityFilterBase):
+    @staticmethod
+    def by_name(name : str):
+        return {"participants_override__name" : name}
+    
+
+    @staticmethod
+    def by_role(role : str):
+        return {"participants_override__role" : role}
+    
+
+class PlaceFilter(UtilityFilterBase):
+    @staticmethod
+    def by_building(building):
+        return {"places_override__building" : building}
+    
+
+    @staticmethod
+    def by_room(room):
+        return {"places_override__room" : room}
+    
+
+class EventFilter(UtilityFilterBase):
+    @staticmethod
+    def not_overriden():
+        return {
+            'abstract_event__kind' : F("kind_override"),
+            'abstract_event__subject' : F("subject_override"),
+            'abstract_event__time_slot' : F("time_slot_override"),
+            'is_event_canceled' : False
+        }
+    
+
+    @staticmethod
+    def schedule_in_range(acceptable_schedule_range):
+        return {"abstract_event__schedule__in" : acceptable_schedule_range}
+    
+
+class DayDateOverrideFilter(UtilityFilterBase):
+    @staticmethod
+    def qwe():
+        return

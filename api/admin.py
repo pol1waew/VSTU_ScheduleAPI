@@ -130,9 +130,12 @@ class EventAdmin(BaseAdmin):
 
         read = ReadAPI()
 
-        read.append_filter(filters.DateFilter.this_week())
+        #read.append_filter(filters.DateFilter.this_week())
+        read.append_filter(filters.ParticipantFilter.by_name("Кузнецова А.С."))
+        read.append_filter(filters.ParticipantFilter.by_name("Гилка В.В."))
+        read.append_filter(filters.DateFilter.from_singe_date("2025-04-10"))
 
-        read.get_data()
+        read.find_data()
 
 
 @admin.register(AbstractEvent)

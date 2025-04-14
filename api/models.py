@@ -234,12 +234,12 @@ class Schedule(CommonModel):
     def save(self, **kwargs):
         super().save(**kwargs)
         
-        from api.utilities import WriteAPI
+        from api.utilities import WriteAPI, ReadAPI
 
-        events_with_schedule = Event.objects.filter(abstract_event__schedule = self).values_list("abstract_event__pk", flat=True).distinct()
-        abstract_events_with_schedule = AbstractEvent.objects.filter(pk__in = events_with_schedule)
+        reader = ReadAPI()
+        reader.find_abstract_events_with_schedule(self)
 
-        for e in abstract_events_with_schedule:
+        for e in reader.get_raw_found_data():
             WriteAPI.rewrite_events(e)
 
 
@@ -274,7 +274,7 @@ class AbstractEvent(CommonModel):
     abstract_day = models.ForeignKey(AbstractDay, on_delete=models.PROTECT, verbose_name="Абстрактный день")
     time_slot = models.ForeignKey(TimeSlot, on_delete=models.PROTECT, verbose_name="Временной интервал")
     # single date. for many dates you should create many events
-    holds_on_dates = models.DateField(null=True, blank=True, verbose_name="Проводится только в заданные дни")
+    holds_on_date = models.DateField(null=True, blank=True, verbose_name="Проводится только в заданный день")
     schedule = models.ForeignKey(Schedule, null=True, on_delete=models.CASCADE, related_name="events", verbose_name="Расписание")
 
     def __repr__(self):
@@ -316,14 +316,24 @@ class DayDateOverride(CommonModel):
 
     day_source = models.DateField(blank=False, verbose_name="Перенести с даты")
     day_destination = models.DateField(blank=False, verbose_name="Перенести на дату")
-    schedule = models.ManyToManyField(
-        Schedule, 
-        related_name="day_overrides", 
-        verbose_name="Расписание"
-    )
+    schedule = models.ManyToManyField(Schedule, related_name="day_overrides", verbose_name="Расписание")
 
     def __repr__(self):
         return f"Перенос с {self.day_source} на {self.day_destination}"
+    
+    def save(self, **kwargs):
+        super().save(**kwargs)
+
+        from api.utilities import WriteAPI, ReadAPI
+        import api.utilityFilters as filters
+
+        reader = ReadAPI(filters.DateFilter.from_singe_date(self.day_source))
+        reader.append_filter(filters.EventFilter.schedule_in_range(self.schedule.all())) ## TODO протестировать с несколькими расписаниями
+            
+        reader.find_data()
+        
+        for e in reader.get_raw_found_data():
+            WriteAPI.move_event_to_date(e, self.day_destination)
 
 
 ## TODO
