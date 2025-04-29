@@ -11,11 +11,9 @@ class UtilityFilterBase:
 
 class DateFilter(UtilityFilterBase):
     @staticmethod
-    def from_singe_date(_date : str|date):
-        if isinstance(_date, str):
-            _date = date.fromisoformat(_date)
-
-        return {"date" : _date}
+    # TODO поместить подчерк в конец названия
+    def from_singe_date(date_ : str|date):
+        return {"date" : date_}
 
 
     @staticmethod
@@ -40,10 +38,7 @@ class DateFilter(UtilityFilterBase):
     
 
     @staticmethod
-    def take_whole_week(_date : str|date):
-        if isinstance(_date, str):
-            _date = date.fromisoformat(_date)
-
+    def take_whole_week(_date):
         return DateFilter.from_range(_date, _date.weekday(), 6 - _date.weekday())
 
 
@@ -59,12 +54,12 @@ class DateFilter(UtilityFilterBase):
 
 class ParticipantFilter(UtilityFilterBase):
     @staticmethod
-    def by_name(name : str):
+    def by_name(name):
         return {"participants_override__name" : name}
     
 
     @staticmethod
-    def by_role(role : str):
+    def by_role(role):
         return {"participants_override__role" : role}
     
 
@@ -91,11 +86,6 @@ class EventFilter(UtilityFilterBase):
     
 
     @staticmethod
-    def schedule_in_range(acceptable_schedule_range):
+    def by_schedule_in_range(acceptable_schedule_range):
         return {"abstract_event__schedule__in" : acceptable_schedule_range}
     
-
-class DayDateOverrideFilter(UtilityFilterBase):
-    @staticmethod
-    def qwe():
-        return

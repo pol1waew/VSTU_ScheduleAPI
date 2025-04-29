@@ -1,6 +1,7 @@
 from api.utilities import WriteAPI, ReadAPI
 
 from django.contrib import admin, messages
+from django.contrib.admin.actions import delete_selected
 from django.forms import BaseInlineFormSet
 from django.utils import timezone
 
@@ -135,7 +136,7 @@ class EventAdmin(BaseAdmin):
         read.append_filter(filters.ParticipantFilter.by_name("Гилка В.В."))
         read.append_filter(filters.DateFilter.from_singe_date("2025-04-10"))
 
-        read.find_data()
+        read.find_models(Event)
 
 
 @admin.register(AbstractEvent)
@@ -189,6 +190,22 @@ class TimeSlotAdmin(BaseAdmin):
 class DayDateOverrideAdmin(BaseAdmin):
     list_display = ("day_source", "day_destination")
     search_fields = ("day_source", "day_destination")
+
+    actions = ["override"]
+
+    @admin.action(description="Применить переносы")
+    def override(modeladmin, request, queryset):
+        import api.utilityFilters as filters
+
+        for ddo in queryset:
+            reader = ReadAPI(filters.DateFilter.from_singe_date(ddo.day_source))
+            reader.append_filter(filters.EventFilter.by_schedule_in_range(ddo.schedule.all())) ## TODO протестировать с несколькими расписаниями
+            
+            reader.find_models(Event)
+            
+            WriteAPI.override_event_dates(ddo, reader.get_found_models())
+
+        messages.success(request, "Успешно перенесены")
 
 
 TokenAdmin.raw_id_fields = ["user"]

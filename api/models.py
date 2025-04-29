@@ -3,7 +3,7 @@ from typing import Optional, Self
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models.signals import pre_save
+from django.db.models.signals import pre_save, post_save, pre_delete
 from django.dispatch import receiver
 
 
@@ -190,13 +190,16 @@ class ScheduleTemplate(CommonModel):
     
     def save(self, **kwargs):
         super().save(**kwargs)
+
+        from api.utilities import WriteAPI, ReadAPI
+
+        reader = ReadAPI({"schedule__schedule_template" : self})
+        # getting AbstractEvent with existing Event
+        reader.append_filter({"pk__in" : Event.objects.values_list("abstract_event__pk", flat=True).distinct()})
         
-        from api.utilities import WriteAPI
+        reader.find_models(AbstractEvent)
 
-        events_with_schedule = Event.objects.filter(abstract_event__schedule__schedule_template = self).values_list("abstract_event__pk", flat=True).distinct()
-        abstract_events_with_template = AbstractEvent.objects.filter(pk__in = events_with_schedule)
-
-        for e in abstract_events_with_template:
+        for e in reader.get_found_models():
             WriteAPI.rewrite_events(e)
 
 
@@ -236,11 +239,14 @@ class Schedule(CommonModel):
         
         from api.utilities import WriteAPI, ReadAPI
 
-        reader = ReadAPI()
-        reader.find_abstract_events_with_schedule(self)
+        reader = ReadAPI({"schedule" : self})
+        # getting AbstractEvent with existing Event
+        reader.append_filter({"pk__in" : Event.objects.values_list("abstract_event__pk", flat=True).distinct()})
+        
+        reader.find_models(AbstractEvent)
 
-        for e in reader.get_raw_found_data():
-            WriteAPI.rewrite_events(e)
+        for ae in reader.get_found_models():
+            WriteAPI.rewrite_events(ae)
 
 
 class EventParticipant(CommonModel):
@@ -279,35 +285,17 @@ class AbstractEvent(CommonModel):
 
     def __repr__(self):
         return f"Занятие по {self.subject.name}, {self.time_slot.alt_name}ч."
-    
 
 @receiver(pre_save, sender=AbstractEvent)
-def OnAbstractEventSave(sender, instance, *args, **kwargs):
+def OnAbstractEventSave(sender, instance, **kwargs):
     '''if instance.abstract_day != AbstractEvent.objects.get(pk=instance.pk).abstract_day or \
         instance.time_slot != AbstractEvent.objects.get(pk=instance.pk).time_slot or \
         instance.time_slot != AbstractEvent.objects.get(pk=instance.pk).time_slot:'''
+    
     from api.utilities import WriteAPI
 
     WriteAPI.rewrite_events(instance)
     
-
-class Event(CommonModel):
-    class Meta:
-        verbose_name = "Событие"
-        verbose_name_plural = "События"
-
-    date = models.DateField(null=True, blank=False, verbose_name="Дата")
-    kind_override = models.ForeignKey(EventKind, null=True, on_delete=models.PROTECT, verbose_name="Тип")
-    subject_override = models.ForeignKey(Subject, null=True, on_delete=models.PROTECT, verbose_name="Предмет")
-    participants_override = models.ManyToManyField(EventParticipant, verbose_name="Участники")
-    places_override = models.ManyToManyField(EventPlace, verbose_name="Места")
-    time_slot_override = models.ForeignKey(TimeSlot, null=True, on_delete=models.PROTECT, verbose_name="Временной интервал")
-    abstract_event = models.ForeignKey(AbstractEvent, null=True, on_delete=models.PROTECT, verbose_name="Абстрактное событие")
-    is_event_canceled = models.BooleanField(verbose_name="Событие отменено", default=False) ## null=True
-
-    def __repr__(self):
-        return f"Занятие по {self.abstract_event.subject.name}"
-
 
 class DayDateOverride(CommonModel):
     class Meta:
@@ -323,17 +311,56 @@ class DayDateOverride(CommonModel):
     
     def save(self, **kwargs):
         super().save(**kwargs)
-
+        
         from api.utilities import WriteAPI, ReadAPI
         import api.utilityFilters as filters
 
         reader = ReadAPI(filters.DateFilter.from_singe_date(self.day_source))
-        reader.append_filter(filters.EventFilter.schedule_in_range(self.schedule.all())) ## TODO протестировать с несколькими расписаниями
-            
-        reader.find_data()
+        reader.append_filter(filters.EventFilter.by_schedule_in_range(self.schedule.all())) ## TODO протестировать с несколькими расписаниями
         
-        for e in reader.get_raw_found_data():
-            WriteAPI.move_event_to_date(e, self.day_destination)
+        reader.find_models(Event)
+        print(reader.filter_query)
+        
+        WriteAPI.override_event_dates(self, reader.get_found_models())
+
+@receiver(pre_delete, sender=DayDateOverride)
+def OnDayDateOverrideDelete(sender, instance, **kwargs):
+    from api.utilities import WriteAPI, ReadAPI
+
+    reader = ReadAPI({"date_override" : instance})
+        
+    reader.find_models(Event)
+    
+    WriteAPI.override_event_dates(None, reader.get_found_models())
+
+
+class Event(CommonModel):
+    class Meta:
+        verbose_name = "Событие"
+        verbose_name_plural = "События"
+
+    date = models.DateField(null=True, blank=False, verbose_name="Дата")
+    date_override = models.ForeignKey(DayDateOverride, null=True, blank=True, on_delete=models.DO_NOTHING, verbose_name="Перенос дня")
+    kind_override = models.ForeignKey(EventKind, null=True, on_delete=models.PROTECT, verbose_name="Тип")
+    subject_override = models.ForeignKey(Subject, null=True, on_delete=models.PROTECT, verbose_name="Предмет")
+    participants_override = models.ManyToManyField(EventParticipant, verbose_name="Участники")
+    places_override = models.ManyToManyField(EventPlace, verbose_name="Места")
+    time_slot_override = models.ForeignKey(TimeSlot, null=True, on_delete=models.PROTECT, verbose_name="Временной интервал")
+    abstract_event = models.ForeignKey(AbstractEvent, null=True, on_delete=models.PROTECT, verbose_name="Абстрактное событие")
+    is_event_canceled = models.BooleanField(verbose_name="Событие отменено", default=False)
+
+    def __repr__(self):
+        return f"Занятие по {self.abstract_event.subject.name}"
+
+
+"""
+    Если несколько DayDateOverride'ов хотят перенести event
+    например:
+    11.02 -> 15.02
+    10.02 -> 15.02
+
+    что делать? 
+"""
 
 
 ## TODO
@@ -343,3 +370,5 @@ class DayDateOverride(CommonModel):
 ## эндпоинт для визуализации (обобщённый класс)
 ## заполнение евентов из schedule
 ## Администрирование Django -> Администрирование расписания
+
+## обновить test_data
