@@ -54,25 +54,66 @@ class DateFilter(UtilityFilterBase):
 
 class ParticipantFilter(UtilityFilterBase):
     @staticmethod
-    def by_name(name):
+    def by_name(name : str|list[str]):
+        """
+        Use list of participant names for OR behaviour
+        """
+
+        if type(name) is list:
+            return {"participants_override__name__in" : name}
+        
         return {"participants_override__name" : name}
-    
+        
 
     @staticmethod
-    def by_role(role):
+    def by_role(role : str|list[str]):
+        """
+        Use list of participant roles for OR behaviour
+        """
+        
+        if type(role) is list:
+            return {"participants_override__role__in" : role}
+        
         return {"participants_override__role" : role}
     
 
 class PlaceFilter(UtilityFilterBase):
     @staticmethod
-    def by_building(building):
+    def by_building(building : str|list[str]):
+        """
+        Use list of place buildings for OR behaviour
+        """
+
+        if type(building) is list:
+            return {"places_override__building__in" : building}
+
         return {"places_override__building" : building}
     
 
     @staticmethod
-    def by_room(room):
+    def by_room(room : str|list[str]):
+        """
+        Use list of place rooms for OR behaviour
+        """
+        
+        if type(room) is list:
+            return {"places_override__room__in" : room}
+
         return {"places_override__room" : room}
     
+
+class SubjectFilter(UtilityFilterBase):
+    @staticmethod
+    def by_name(name):
+        """
+        Use list of subject names for OR behaviour
+        """
+
+        if type(name) is list:
+            return {"subject_override__name__in" : name}
+
+        return {"subject_override__name" : name}
+
 
 class EventFilter(UtilityFilterBase):
     @staticmethod
@@ -86,6 +127,10 @@ class EventFilter(UtilityFilterBase):
     
 
     @staticmethod
-    def by_schedule_in_range(acceptable_schedule_range):
-        return {"abstract_event__schedule__in" : acceptable_schedule_range}
+    def by_schedule(schedule):
+        print(schedule.count())
+        if schedule.count() > 1:
+            return {"abstract_event__schedule__in" : schedule}
+        
+        return {"abstract_event__schedule__in" : schedule}
     

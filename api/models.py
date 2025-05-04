@@ -195,7 +195,7 @@ class ScheduleTemplate(CommonModel):
 
         reader = ReadAPI({"schedule__schedule_template" : self})
         # getting AbstractEvent with existing Event
-        reader.append_filter({"pk__in" : Event.objects.values_list("abstract_event__pk", flat=True).distinct()})
+        reader.create_filter({"pk__in" : Event.objects.values_list("abstract_event__pk", flat=True).distinct()})
         
         reader.find_models(AbstractEvent)
 
@@ -241,7 +241,7 @@ class Schedule(CommonModel):
 
         reader = ReadAPI({"schedule" : self})
         # getting AbstractEvent with existing Event
-        reader.append_filter({"pk__in" : Event.objects.values_list("abstract_event__pk", flat=True).distinct()})
+        reader.create_filter({"pk__in" : Event.objects.values_list("abstract_event__pk", flat=True).distinct()})
         
         reader.find_models(AbstractEvent)
 
@@ -287,11 +287,7 @@ class AbstractEvent(CommonModel):
         return f"Занятие по {self.subject.name}, {self.time_slot.alt_name}ч."
 
 @receiver(pre_save, sender=AbstractEvent)
-def OnAbstractEventSave(sender, instance, **kwargs):
-    '''if instance.abstract_day != AbstractEvent.objects.get(pk=instance.pk).abstract_day or \
-        instance.time_slot != AbstractEvent.objects.get(pk=instance.pk).time_slot or \
-        instance.time_slot != AbstractEvent.objects.get(pk=instance.pk).time_slot:'''
-    
+def OnAbstractEventSave(sender, instance, **kwargs):    
     from api.utilities import WriteAPI
 
     WriteAPI.rewrite_events(instance)
@@ -304,7 +300,9 @@ class DayDateOverride(CommonModel):
 
     day_source = models.DateField(blank=False, verbose_name="Перенести с даты")
     day_destination = models.DateField(blank=False, verbose_name="Перенести на дату")
-    schedule = models.ManyToManyField(Schedule, related_name="day_overrides", verbose_name="Расписание")
+    schedule = models.ManyToManyField(Schedule, related_name="day_overrides", verbose_name="Расписание")  ##TODO поменять на подразделение и уйти от m2m
+    ## TODO добавить поле ОТМЕНЫ СОБЫТИЙ
+    ## или вынести в отдельную модельку
 
     def __repr__(self):
         return f"Перенос с {self.day_source} на {self.day_destination}"
@@ -316,12 +314,16 @@ class DayDateOverride(CommonModel):
         import api.utilityFilters as filters
 
         reader = ReadAPI(filters.DateFilter.from_singe_date(self.day_source))
-        reader.append_filter(filters.EventFilter.by_schedule_in_range(self.schedule.all())) ## TODO протестировать с несколькими расписаниями
-        
+        reader.create_filter(filters.EventFilter.by_schedule(self.schedule.all())) ## TODO протестировать с несколькими расписаниями
+
         reader.find_models(Event)
-        print(reader.filter_query)
         
         WriteAPI.override_event_dates(self, reader.get_found_models())
+
+
+@receiver(post_save, sender=DayDateOverride)
+def TESTTEST(sender, instance, **kwargs):
+    print(sender)
 
 @receiver(pre_delete, sender=DayDateOverride)
 def OnDayDateOverrideDelete(sender, instance, **kwargs):
@@ -332,6 +334,8 @@ def OnDayDateOverrideDelete(sender, instance, **kwargs):
     reader.find_models(Event)
     
     WriteAPI.override_event_dates(None, reader.get_found_models())
+
+
 
 
 class Event(CommonModel):
@@ -352,15 +356,6 @@ class Event(CommonModel):
     def __repr__(self):
         return f"Занятие по {self.abstract_event.subject.name}"
 
-
-"""
-    Если несколько DayDateOverride'ов хотят перенести event
-    например:
-    11.02 -> 15.02
-    10.02 -> 15.02
-
-    что делать? 
-"""
 
 
 ## TODO

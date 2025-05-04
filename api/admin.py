@@ -132,11 +132,21 @@ class EventAdmin(BaseAdmin):
         read = ReadAPI()
 
         #read.append_filter(filters.DateFilter.this_week())
-        read.append_filter(filters.ParticipantFilter.by_name("Кузнецова А.С."))
-        read.append_filter(filters.ParticipantFilter.by_name("Гилка В.В."))
-        read.append_filter(filters.DateFilter.from_singe_date("2025-04-10"))
+        """
+        AND
+        read.create_filter(filters.ParticipantFilter.by_name("Кузнецова А.С."))
+        read.create_filter(filters.ParticipantFilter.by_name("Гилка В.В."))
+        """
+
+        """
+        OR
+        read.create_filter(filters.ParticipantFilter.by_name(["Кузнецова А.С.", "Гилка В.В."]))
+        """
+        read.create_filter(filters.ParticipantFilter.by_name(["Кузнецова А.С.", "Гилка В.В.", "TESTESTEST"]))
+        read.create_filter(filters.DateFilter.from_singe_date("2025-02-25"))
 
         read.find_models(Event)
+        print(read.get_found_models())
 
 
 @admin.register(AbstractEvent)
@@ -199,7 +209,7 @@ class DayDateOverrideAdmin(BaseAdmin):
 
         for ddo in queryset:
             reader = ReadAPI(filters.DateFilter.from_singe_date(ddo.day_source))
-            reader.append_filter(filters.EventFilter.by_schedule_in_range(ddo.schedule.all())) ## TODO протестировать с несколькими расписаниями
+            reader.create_filter(filters.EventFilter.by_schedule(ddo.schedule.all()))
             
             reader.find_models(Event)
             
