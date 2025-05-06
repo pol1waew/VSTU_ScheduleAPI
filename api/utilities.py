@@ -27,7 +27,7 @@ class ReadAPI:
         self.filter_query = filter_query or {}
 
 
-    def create_filter(self, filter : filters.UtilityFilterBase):
+    def add_filter(self, filter : filters.UtilityFilterBase):
         """Updates filter query by adding new filter
 
         Allows user manualy append filters in format {'field_name' : value}
@@ -167,64 +167,65 @@ class WriteAPI:
             
             date += timedelta(days=repetition_period)
 
+        # applying date overrides to created events
+        # getting all DayDateOverrides for ae
+        reader = ReadAPI({"department" : abstract_event.schedule.schedule_template.department})
+
+        reader.find_models(DayDateOverride)
+
+        # if DayDateOverride found
+        # need to apply it
+        if reader.get_found_models().exists():
+            for ddo in reader.get_found_models():
+                reader.clear_filter_query()
+                reader.add_filter(filters.DateFilter.from_singe_date(ddo.day_source))
+                reader.add_filter(filters.EventFilter.by_department(ddo.department))
+                
+                reader.find_models(Event)
+                
+                WriteAPI.override_event_dates(ddo, reader.get_found_models())        
+
     
     @classmethod
-    def fill_event_table(cls, abstract_events, only_for_those_aes = False):
+    def fill_event_table(cls, abstract_events, full_clear = False):
         """Clear event table and fill it from abstract_events
-        """
 
+        Use full_clear for clearing all event table
+        instead events from abstract event
+        """
+        
         # deleting only not overriden events
         filter_query = filters.EventFilter.not_overriden()
-        # deleting Events only for specified AbstractEvents
-        if only_for_those_aes:
-            filter_query.update({"abstract_event__in" : abstract_events})
 
-        Event.objects.filter(**filter_query).delete()
+        try:
+            iterator = iter(abstract_events)
+        except TypeError:
+            # deleting Events only for specified AbstractEvents
+            if not full_clear:
+                filter_query.update({"abstract_event__pk" : abstract_events.pk})
 
-        reader = ReadAPI()
-
-        for ae in abstract_events:
+            Event.objects.filter(**filter_query).delete()
+            
             # filling semester by Events from abstract_event
-            cls.fill_semester(ae)
+            cls.fill_semester(abstract_events)
+        else:
+            # deleting Events only for specified AbstractEvents
+            if not full_clear:
+                filter_query.update({"abstract_event__in" : abstract_events})
 
-            # getting all DayDateOverrides for ae
-            reader.create_filter({"schedule" : ae.schedule})
-
-            reader.find_models(DayDateOverride)
-            found_overrides = reader.get_found_models()
-
-            if found_overrides.exists():
-                for ddo in found_overrides:
-                    reader.clear_filter_query()
-                    reader.create_filter(filters.DateFilter.from_singe_date(ddo.day_source))
-                    reader.create_filter(filters.EventFilter.by_schedule(ddo.schedule.all())) ## TODO протестировать с несколькими расписаниями
-                    
-                    reader.find_models(Event)
-                    
-                    WriteAPI.override_event_dates(ddo, reader.get_found_models())
-
-        return True
-    
-
-    ## TODO СОВМЕСТИТЬ С fill_event_table
-    @classmethod
-    def rewrite_events(cls, changed_abstract_event):
-        """Rewrite Events with specified AbstractEvent
-        """
-
-        filter_query = {'abstract_event__pk' : changed_abstract_event.pk}
-        # deleting only not overriden events
-        filter_query.update(filters.EventFilter.not_overriden())
-        Event.objects.filter(**filter_query).delete()
-
-        cls.fill_semester(changed_abstract_event)
+            Event.objects.filter(**filter_query).delete()
+            
+            for ae in abstract_events:
+                # filling semester by Events from abstract_event
+                cls.fill_semester(ae)
+                
 
         return True
     
 
     @staticmethod
     def override_event_dates(override : DayDateOverride, events):
-        """Apply DayDateOverride to events
+        """Apply DayDateOverride to given events
         
         Use override=None to detach events from date override
         """

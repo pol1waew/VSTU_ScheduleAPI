@@ -192,15 +192,15 @@ class ScheduleTemplate(CommonModel):
         super().save(**kwargs)
 
         from api.utilities import WriteAPI, ReadAPI
+        import api.utilityFilters as filters
 
         reader = ReadAPI({"schedule__schedule_template" : self})
-        # getting AbstractEvent with existing Event
-        reader.create_filter({"pk__in" : Event.objects.values_list("abstract_event__pk", flat=True).distinct()})
+        # getting AbstractEvents with existing Events
+        reader.add_filter(filters.AbstractEventFilter.with_existing_events())
         
         reader.find_models(AbstractEvent)
 
-        for e in reader.get_found_models():
-            WriteAPI.rewrite_events(e)
+        WriteAPI.fill_event_table(reader.get_found_models())
 
 
 class Schedule(CommonModel):
@@ -238,15 +238,15 @@ class Schedule(CommonModel):
         super().save(**kwargs)
         
         from api.utilities import WriteAPI, ReadAPI
+        import api.utilityFilters as filters
 
         reader = ReadAPI({"schedule" : self})
         # getting AbstractEvent with existing Event
-        reader.create_filter({"pk__in" : Event.objects.values_list("abstract_event__pk", flat=True).distinct()})
+        reader.add_filter(filters.AbstractEventFilter.with_existing_events())
         
         reader.find_models(AbstractEvent)
 
-        for ae in reader.get_found_models():
-            WriteAPI.rewrite_events(ae)
+        WriteAPI.fill_event_table(reader.get_found_models())
 
 
 class EventParticipant(CommonModel):
@@ -290,8 +290,23 @@ class AbstractEvent(CommonModel):
 def OnAbstractEventSave(sender, instance, **kwargs):    
     from api.utilities import WriteAPI
 
-    WriteAPI.rewrite_events(instance)
+    WriteAPI.fill_event_table(instance)
     
+
+class EventCancel(CommonModel):
+    class Meta:
+        verbose_name = "Отмена событий"
+        verbose_name_plural = "Отмены событий"
+
+    date = models.DateField(blank=False, verbose_name="Отменить для даты")
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, verbose_name="Подразделение")
+
+    def __repr__(self):
+        return f"Отмена событий на {self.date}"    
+    
+    def save(self, **kwargs):
+        super().save(**kwargs)
+
 
 class DayDateOverride(CommonModel):
     class Meta:
@@ -300,9 +315,7 @@ class DayDateOverride(CommonModel):
 
     day_source = models.DateField(blank=False, verbose_name="Перенести с даты")
     day_destination = models.DateField(blank=False, verbose_name="Перенести на дату")
-    schedule = models.ManyToManyField(Schedule, related_name="day_overrides", verbose_name="Расписание")  ##TODO поменять на подразделение и уйти от m2m
-    ## TODO добавить поле ОТМЕНЫ СОБЫТИЙ
-    ## или вынести в отдельную модельку
+    department = models.ForeignKey(Department, null=True, on_delete=models.CASCADE, verbose_name="Подразделение")
 
     def __repr__(self):
         return f"Перенос с {self.day_source} на {self.day_destination}"
@@ -314,16 +327,11 @@ class DayDateOverride(CommonModel):
         import api.utilityFilters as filters
 
         reader = ReadAPI(filters.DateFilter.from_singe_date(self.day_source))
-        reader.create_filter(filters.EventFilter.by_schedule(self.schedule.all())) ## TODO протестировать с несколькими расписаниями
-
+        reader.add_filter(filters.EventFilter.by_department(self.department))
+        
         reader.find_models(Event)
         
         WriteAPI.override_event_dates(self, reader.get_found_models())
-
-
-@receiver(post_save, sender=DayDateOverride)
-def TESTTEST(sender, instance, **kwargs):
-    print(sender)
 
 @receiver(pre_delete, sender=DayDateOverride)
 def OnDayDateOverrideDelete(sender, instance, **kwargs):
@@ -334,8 +342,6 @@ def OnDayDateOverrideDelete(sender, instance, **kwargs):
     reader.find_models(Event)
     
     WriteAPI.override_event_dates(None, reader.get_found_models())
-
-
 
 
 class Event(CommonModel):

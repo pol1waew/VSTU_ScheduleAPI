@@ -1,5 +1,8 @@
 from django.db.models import F
 from datetime import date, timedelta
+from api.models import (
+    Event,
+)
 
 
 class UtilityFilterBase:
@@ -11,7 +14,6 @@ class UtilityFilterBase:
 
 class DateFilter(UtilityFilterBase):
     @staticmethod
-    # TODO поместить подчерк в конец названия
     def from_singe_date(date_ : str|date):
         return {"date" : date_}
 
@@ -27,19 +29,19 @@ class DateFilter(UtilityFilterBase):
 
 
     @staticmethod
-    def from_range(_date : str|date, left_range : int, right_range : int):
-        if isinstance(_date, str):
-            _date = date.fromisoformat(_date)
+    def from_range(date_ : str|date, left_range : int, right_range : int):
+        if isinstance(date_, str):
+            date_ = date.fromisoformat(date_)
         
-        left_interval_date = _date - timedelta(days=left_range)
-        right_interval_date = _date + timedelta(days=right_range)
+        left_interval_date = date_ - timedelta(days=left_range)
+        right_interval_date = date_ + timedelta(days=right_range)
 
         return {"date__range" : [left_interval_date, right_interval_date]}
     
 
     @staticmethod
-    def take_whole_week(_date):
-        return DateFilter.from_range(_date, _date.weekday(), 6 - _date.weekday())
+    def take_whole_week(date_):
+        return DateFilter.from_range(date_, date_.weekday(), 6 - date_.weekday())
 
 
     @staticmethod
@@ -128,9 +130,16 @@ class EventFilter(UtilityFilterBase):
 
     @staticmethod
     def by_schedule(schedule):
-        print(schedule.count())
-        if schedule.count() > 1:
-            return {"abstract_event__schedule__in" : schedule}
-        
-        return {"abstract_event__schedule__in" : schedule}
+        return {"abstract_event__schedule" : schedule}
+    
+
+    @staticmethod
+    def by_department(department):        
+        return {"abstract_event__schedule__schedule_template__department" : department}
+    
+
+class AbstractEventFilter(UtilityFilterBase):
+    @staticmethod
+    def with_existing_events():
+        return {"pk__in" : Event.objects.values_list("abstract_event__pk", flat=True).distinct()}
     

@@ -21,6 +21,7 @@ from api.models import (
     Subject,
     TimeSlot,
     DayDateOverride,
+    EventCancel,
 )
 
 from rest_framework.authtoken.admin import TokenAdmin
@@ -142,8 +143,8 @@ class EventAdmin(BaseAdmin):
         OR
         read.create_filter(filters.ParticipantFilter.by_name(["Кузнецова А.С.", "Гилка В.В."]))
         """
-        read.create_filter(filters.ParticipantFilter.by_name(["Кузнецова А.С.", "Гилка В.В.", "TESTESTEST"]))
-        read.create_filter(filters.DateFilter.from_singe_date("2025-02-25"))
+        read.add_filter(filters.ParticipantFilter.by_name(["Кузнецова А.С.", "Гилка В.В.", "TESTESTEST"]))
+        read.add_filter(filters.DateFilter.from_singe_date("2025-02-25"))
 
         read.find_models(Event)
         print(read.get_found_models())
@@ -209,13 +210,19 @@ class DayDateOverrideAdmin(BaseAdmin):
 
         for ddo in queryset:
             reader = ReadAPI(filters.DateFilter.from_singe_date(ddo.day_source))
-            reader.create_filter(filters.EventFilter.by_schedule(ddo.schedule.all()))
+            reader.add_filter(filters.EventFilter.by_department(ddo.department))
             
             reader.find_models(Event)
             
             WriteAPI.override_event_dates(ddo, reader.get_found_models())
 
         messages.success(request, "Успешно перенесены")
+
+
+@admin.register(EventCancel)
+class EventCanceelAdmin(BaseAdmin):
+    list_display = ("date", "department")
+    search_fields = ("date", "department")
 
 
 TokenAdmin.raw_id_fields = ["user"]
