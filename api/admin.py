@@ -120,34 +120,7 @@ class ScheduleAdmin(BaseAdmin):
 class EventAdmin(BaseAdmin):
     list_display = ("subject_override", "kind_override", "date", "time_slot_override")
     search_fields = ("subject_override", "date", "kind_override")
-    list_filter = ("kind_override",)
-
-    actions = ["test"]
-    @admin.action(description="Testing ReadAPI")
-    def test(modeladmin, request, queryset):
-        import api.utilityFilters as filters
-        # по дате: сегодня, завтра, на эту неделю, на след неделю
-        # по группам, по преподавателям, по аудиториям
-        # всё, конкретное указание 
-
-        read = ReadAPI()
-
-        #read.append_filter(filters.DateFilter.this_week())
-        """
-        AND
-        read.create_filter(filters.ParticipantFilter.by_name("Кузнецова А.С."))
-        read.create_filter(filters.ParticipantFilter.by_name("Гилка В.В."))
-        """
-
-        """
-        OR
-        read.create_filter(filters.ParticipantFilter.by_name(["Кузнецова А.С.", "Гилка В.В."]))
-        """
-        read.add_filter(filters.ParticipantFilter.by_name(["Кузнецова А.С.", "Гилка В.В.", "TESTESTEST"]))
-        read.add_filter(filters.DateFilter.from_singe_date("2025-02-25"))
-
-        read.find_models(Event)
-        print(read.get_found_models())
+    list_filter = ("kind_override", "is_event_canceled")
 
 
 @admin.register(AbstractEvent)
@@ -156,7 +129,12 @@ class AbstractEventAdmin(BaseAdmin):
     search_fields = ("subject__name", "kind__name")
     list_filter = ("kind__name",)
 
-    actions = ["fill"]
+    actions = ["delete_events", "fill"]
+
+    @admin.action(description="Удалить связанные события")
+    def delete_events(modeladmin, request, queryset):
+        Event.objects.filter(abstract_event__in=queryset).delete()
+        messages.success(request, "Связанные события успешно удалены")
 
     @admin.action(description="Заполнить семестр")
     def fill(modeladmin, request, queryset):
@@ -170,6 +148,7 @@ class AbstractEventAdmin(BaseAdmin):
 class AbstractDayAdmin(BaseAdmin):
     list_display = ("name", "day_number")
     search_fields = ("name", "day_number")
+
 
 @admin.register(Department)
 class DepartmentAdmin(BaseAdmin):
@@ -214,13 +193,14 @@ class DayDateOverrideAdmin(BaseAdmin):
             
             reader.find_models(Event)
             
-            WriteAPI.override_event_dates(ddo, reader.get_found_models())
+            for e in reader.get_found_models():
+                WriteAPI.override_event_date(ddo, e)
 
         messages.success(request, "Успешно перенесены")
 
 
 @admin.register(EventCancel)
-class EventCanceelAdmin(BaseAdmin):
+class EventCancelAdmin(BaseAdmin):
     list_display = ("date", "department")
     search_fields = ("date", "department")
 

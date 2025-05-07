@@ -285,9 +285,13 @@ class AbstractEvent(CommonModel):
 
     def __repr__(self):
         return f"Занятие по {self.subject.name}, {self.time_slot.alt_name}ч."
+    
+    @property
+    def department(self):
+        return self.schedule.schedule_template.department
 
 @receiver(pre_save, sender=AbstractEvent)
-def OnAbstractEventSave(sender, instance, **kwargs):    
+def on_abstract_event_save(sender, instance, **kwargs):    
     from api.utilities import WriteAPI
 
     WriteAPI.fill_event_table(instance)
@@ -306,6 +310,28 @@ class EventCancel(CommonModel):
     
     def save(self, **kwargs):
         super().save(**kwargs)
+        
+        from api.utilities import WriteAPI, ReadAPI
+        import api.utilityFilters as filters
+
+        reader = ReadAPI(filters.DateFilter.from_singe_date(self.date))
+        reader.add_filter(filters.EventFilter.by_department(self.department))
+        
+        reader.find_models(Event)
+        
+        for e in reader.get_found_models():
+            WriteAPI.update_event_canceling(self, e)
+
+@receiver(pre_delete, sender=EventCancel)
+def on_event_cancel_delete(sender, instance, **kwargs):
+    from api.utilities import WriteAPI, ReadAPI
+
+    reader = ReadAPI({"event_cancel" : instance})
+    
+    reader.find_models(Event)
+    
+    for e in reader.get_found_models():
+        WriteAPI.update_event_canceling(None, e)
 
 
 class DayDateOverride(CommonModel):
@@ -331,17 +357,19 @@ class DayDateOverride(CommonModel):
         
         reader.find_models(Event)
         
-        WriteAPI.override_event_dates(self, reader.get_found_models())
+        for e in reader.get_found_models():
+            WriteAPI.override_event_date(self, e)
 
 @receiver(pre_delete, sender=DayDateOverride)
-def OnDayDateOverrideDelete(sender, instance, **kwargs):
+def on_day_date_override_delete(sender, instance, **kwargs):
     from api.utilities import WriteAPI, ReadAPI
 
     reader = ReadAPI({"date_override" : instance})
         
     reader.find_models(Event)
     
-    WriteAPI.override_event_dates(None, reader.get_found_models())
+    for e in reader.get_found_models():
+            WriteAPI.override_event_date(None, e)
 
 
 class Event(CommonModel):
@@ -350,7 +378,7 @@ class Event(CommonModel):
         verbose_name_plural = "События"
 
     date = models.DateField(null=True, blank=False, verbose_name="Дата")
-    date_override = models.ForeignKey(DayDateOverride, null=True, blank=True, on_delete=models.DO_NOTHING, verbose_name="Перенос дня")
+    date_override = models.ForeignKey(DayDateOverride, null=True, blank=True, editable=False, on_delete=models.SET_NULL, verbose_name="Перенос дня")
     kind_override = models.ForeignKey(EventKind, null=True, on_delete=models.PROTECT, verbose_name="Тип")
     subject_override = models.ForeignKey(Subject, null=True, on_delete=models.PROTECT, verbose_name="Предмет")
     participants_override = models.ManyToManyField(EventParticipant, verbose_name="Участники")
@@ -358,18 +386,88 @@ class Event(CommonModel):
     time_slot_override = models.ForeignKey(TimeSlot, null=True, on_delete=models.PROTECT, verbose_name="Временной интервал")
     abstract_event = models.ForeignKey(AbstractEvent, null=True, on_delete=models.PROTECT, verbose_name="Абстрактное событие")
     is_event_canceled = models.BooleanField(verbose_name="Событие отменено", default=False)
+    event_cancel = models.ForeignKey(EventCancel, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Отмена события")
+
+    @property
+    def department(self):
+        return self.abstract_event.schedule.schedule_template.department
 
     def __repr__(self):
         return f"Занятие по {self.abstract_event.subject.name}"
+    
+@receiver(pre_save, sender=Event)
+def on_event_save(sender, instance, **kwargs):
+    created = instance.pk is None
+    previous_event = None
+
+    if not created:
+        previous_event = Event.objects.get(pk=instance.pk)
+
+    # if Event was created or date changed
+    if created or previous_event.date != instance.date:
+        # skip manualy canceled events
+        if previous_event.is_event_canceled and not previous_event.event_cancel:
+            return
+
+        from api.utilities import WriteAPI, ReadAPI
+        import api.utilityFilters as filters
+
+        reader = ReadAPI({"department" : instance.department})
+        reader.add_filter(filters.DateFilter.from_singe_date(instance.date))
+
+        reader.find_models(EventCancel)
+
+        if reader.get_found_models().exists():
+            WriteAPI.update_event_canceling(reader.get_found_models().first(), instance, False)
+        else:
+            instance.is_event_canceled = False
+            instance.event_cancel = None
+
+    # if manualy set EventCancel in Event
+    # but not check is_event_canceled
+    # make Event canceled 
+    if not created and not instance.is_event_canceled and not previous_event.event_cancel and instance.event_cancel:
+        instance.is_event_canceled = True
+    
 
 
 
 ## TODO
 ## оптимизация сохранения
-## перенос дней
 ## уведомление о проблемных записях
 ## эндпоинт для визуализации (обобщённый класс)
-## заполнение евентов из schedule
-## Администрирование Django -> Администрирование расписания
+## Администрирование Django -> Администрирование расписания поменять название
 
 ## обновить test_data
+
+## дублируются евенты с EventCancel
+## предусмотреть отвязку DayDateOverride если даты перестают совпадать с событием
+
+
+"""
+min расписаний 1
+макс 9
+авг 2
+
+1 30%
+2 30%
+9 У ОДНОГО
+
+950 ВСЕГО
+250 >= 3 ЭКСЕЛЕК
+108 >= 4
+"""
+
+"""каждый факультет каждый курс
+авг 4
+макс 15
+
+947 всего
+3>= 679
+4>= 530
+5>= 366
+6>= 258 человек
+8>= 102
+10>= 37 человек
+
+"""

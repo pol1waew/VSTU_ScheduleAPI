@@ -120,11 +120,16 @@ class SubjectFilter(UtilityFilterBase):
 class EventFilter(UtilityFilterBase):
     @staticmethod
     def not_overriden():
+        """
+        Event overriden when at least one of fields (kind, subject, time slot, cancel)
+        differ from AbstractEvent fields
+        """
+        
         return {
-            'abstract_event__kind' : F("kind_override"),
-            'abstract_event__subject' : F("subject_override"),
-            'abstract_event__time_slot' : F("time_slot_override"),
-            'is_event_canceled' : False
+            "abstract_event__kind" : F("kind_override"),
+            "abstract_event__subject" : F("subject_override"),
+            "abstract_event__time_slot" : F("time_slot_override"),
+            "is_event_canceled" : False
         }
     
 

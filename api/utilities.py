@@ -6,7 +6,8 @@ from api.models import (
     CommonModel,
     AbstractEvent,
     Event, 
-    DayDateOverride
+    DayDateOverride,
+    EventCancel
 )
 
 
@@ -76,6 +77,8 @@ class WriteAPI:
     @staticmethod
     def create_event(date_ : str|date, abstract_event : AbstractEvent):
         """Create new Event from abstract_event on specified date
+        
+        Needs to manualy aplly DayDateOverrides and EventCanceles after
         """
 
         if isinstance(date_, str):
@@ -94,17 +97,6 @@ class WriteAPI:
 
         event.participants_override.add(*abstract_event.participants.all())
         event.places_override.add(*abstract_event.places.all())
-
-
-    @staticmethod
-    def clear_not_overriden_events(additional_filter_query = {}):
-        """Deletes all not overriden Events
-        """
-        
-        filter_query = filters.EventFilter.not_overriden()
-        filter_query.update(additional_filter_query)
-
-        Event.objects.filter(**filter_query).delete()
 
 
     @staticmethod
@@ -151,39 +143,41 @@ class WriteAPI:
         # if abstract_event holds only on expected date
         if abstract_event.holds_on_date != None:
             cls.create_event(abstract_event.holds_on_date, abstract_event)
-            return
+        else:
+            semester_start_date, semester_end_date, fill_from_date, repetition_period = cls.get_semester_filling_parameters(abstract_event)
 
-        semester_start_date, semester_end_date, fill_from_date, repetition_period = cls.get_semester_filling_parameters(abstract_event)
+            date = fill_from_date
+            while date < semester_end_date:
+                if date >= semester_start_date:
+                    cls.create_event(date, abstract_event)
+                
+                    # creating Event for only first acceptable date
+                    # if abstract_event is not repeatable
+                    if not abstract_event.schedule.schedule_template.repeatable:
+                        break
+                
+                date += timedelta(days=repetition_period)
 
-        date = fill_from_date
-        while date < semester_end_date:
-            if date >= semester_start_date:
-                cls.create_event(date, abstract_event)
-            
-                # creating Event for only first acceptable date
-                # if abstract_event is not repeatable
-                if not abstract_event.schedule.schedule_template.repeatable:
-                    return
-            
-            date += timedelta(days=repetition_period)
+        reader = ReadAPI({"department" : abstract_event.department})
+
+        # getting all DayDateOverrides for abstract event
+        reader.find_models(DayDateOverride)
+        date_overrides = reader.get_found_models()
+
+        reader.clear_filter_query()
+        reader.add_filter({"abstract_event" : abstract_event})
 
         # applying date overrides to created events
-        # getting all DayDateOverrides for ae
-        reader = ReadAPI({"department" : abstract_event.schedule.schedule_template.department})
+        for ddo in date_overrides:
+            reader.add_filter(filters.DateFilter.from_singe_date(ddo.day_source))
+            
+            reader.find_models(Event)
+            
+            if reader.get_found_models().exists():
+                for e in reader.get_found_models():
+                    cls.override_event_date(ddo, e)
 
-        reader.find_models(DayDateOverride)
-
-        # if DayDateOverride found
-        # need to apply it
-        if reader.get_found_models().exists():
-            for ddo in reader.get_found_models():
-                reader.clear_filter_query()
-                reader.add_filter(filters.DateFilter.from_singe_date(ddo.day_source))
-                reader.add_filter(filters.EventFilter.by_department(ddo.department))
-                
-                reader.find_models(Event)
-                
-                WriteAPI.override_event_dates(ddo, reader.get_found_models())        
+            reader.remove_last_filter()
 
     
     @classmethod
@@ -215,28 +209,42 @@ class WriteAPI:
 
             Event.objects.filter(**filter_query).delete()
             
+            # filling semester by Events from abstract_event
             for ae in abstract_events:
-                # filling semester by Events from abstract_event
                 cls.fill_semester(ae)
                 
-
         return True
     
 
-    @staticmethod
-    def override_event_dates(override : DayDateOverride, events):
+    @classmethod
+    def override_event_date(cls, override : DayDateOverride, event : Event):
         """Apply DayDateOverride to given events
         
         Use override=None to detach events from date override
         """
 
         if override:
-            for e in events:
-                e.date = override.day_destination
-                e.date_override = override     
-                e.save()       
+            event.date = override.day_destination
+            event.date_override = override      
         else:
-            for e in events:
-                e.date = e.date_override.day_source
-                e.date_override = None
-                e.save()
+            event.date = event.date_override.day_source
+            event.date_override = None
+
+        event.save()
+
+
+    @staticmethod
+    def update_event_canceling(event_cancel : EventCancel, event : Event, call_save_method : bool = True):
+        """
+        Use event_cancel=None to undo event cancel
+        """
+
+        if event_cancel:
+            event.is_event_canceled = True
+            event.event_cancel = event_cancel
+        else:
+            event.is_event_canceled = False
+            event.event_cancel = None
+            
+        if call_save_method:
+            event.save()
