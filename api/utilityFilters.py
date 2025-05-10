@@ -8,7 +8,7 @@ from api.models import (
 class UtilityFilterBase:
     """Base parent class for filters   
 
-    Utility filters returns filter query: dict {key : value}
+    Utility filters returns filter query: dict {field_name : parameter}
     """
 
 
@@ -17,16 +17,13 @@ class DateFilter(UtilityFilterBase):
     def from_singe_date(date_ : str|date):
         return {"date" : date_}
 
-
     @staticmethod
     def today():
         return DateFilter.from_singe_date(date.today())
 
-
     @staticmethod
     def tomorrow():
         return DateFilter.from_singe_date(date.today() + timedelta(days=1))
-
 
     @staticmethod
     def from_range(date_ : str|date, left_range : int, right_range : int):
@@ -38,17 +35,14 @@ class DateFilter(UtilityFilterBase):
 
         return {"date__range" : [left_interval_date, right_interval_date]}
     
-
     @staticmethod
     def take_whole_week(date_):
         return DateFilter.from_range(date_, date_.weekday(), 6 - date_.weekday())
-
 
     @staticmethod
     def this_week():
         return DateFilter.take_whole_week(date.today())
     
-
     @staticmethod
     def next_week():
         return DateFilter.take_whole_week(date.today() + timedelta(weeks=1))
@@ -66,7 +60,6 @@ class ParticipantFilter(UtilityFilterBase):
         
         return {"participants_override__name" : name}
         
-
     @staticmethod
     def by_role(role : str|list[str]):
         """
@@ -90,7 +83,6 @@ class PlaceFilter(UtilityFilterBase):
             return {"places_override__building__in" : building}
 
         return {"places_override__building" : building}
-    
 
     @staticmethod
     def by_room(room : str|list[str]):
@@ -131,12 +123,10 @@ class EventFilter(UtilityFilterBase):
             "abstract_event__time_slot" : F("time_slot_override"),
             "is_event_canceled" : False
         }
-    
 
     @staticmethod
     def by_schedule(schedule):
         return {"abstract_event__schedule" : schedule}
-    
 
     @staticmethod
     def by_department(department):        

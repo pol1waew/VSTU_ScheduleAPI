@@ -423,9 +423,9 @@ def on_event_save(sender, instance, **kwargs):
             instance.is_event_canceled = False
             instance.event_cancel = None
 
-    # if manualy set EventCancel in Event
-    # but not check is_event_canceled
-    # make Event canceled 
+    # if EventCancel was manualy setted in Event
+    # but is_event_canceled not checked
+    # make Event canceled
     if not created and not instance.is_event_canceled and not previous_event.event_cancel and instance.event_cancel:
         instance.is_event_canceled = True
     
